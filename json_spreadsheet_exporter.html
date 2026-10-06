@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON Schema & Spreadsheet Exporter</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    },
+                    colors: {
+                        slate: {
+                            850: '#151e2e',
+                            900: '#0f172a',
+                            950: '#080d1a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar for tables & code editors */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.05);
+        }
+        .dark ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
+        .dark ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 0, 0, 0.3);
+        }
+        .dark ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        /* JSON Syntax Highlighting */
+        .json-key { color: #38bdf8; }
+        .json-string { color: #4ade80; }
+        .json-number { color: #fbbf24; }
+        .json-boolean { color: #f472b6; }
+        .json-null { color: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans h-screen flex flex-col overflow-hidden transition-colors duration-200">
+
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <header class="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm z-20">
+        <!-- Brand & Document Title -->
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
+                <i class="fa-solid fa-file-code text-lg"></i>
+            </div>
+            <div>
+                <h1 class="text-base font-bold bg-gradient-to-r from-indigo-600 to-violet-500 bg-clip-text text-transparent leading-tight">SheetToJSON</h1>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Schema & JSON Exporter Studio</p>
+            </div>
+        </div>
+
+        <!-- Sheet Selector Tabs -->
+        <div class="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl max-w-md overflow-x-auto border border-slate-200/60 dark:border-slate-700/60" id="sheet-tabs-container">
+            <!-- Dynamic Sheet Tabs Rendered Here -->
+        </div>
+
+        <!-- Action Controls & Header Tools -->
+        <div class="flex items-center gap-2">
+            <!-- Add Sheet Button -->
+            <button onclick="addNewSheet()" title="Create New Spreadsheet" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-plus text-indigo-500"></i> New Sheet
+            </button>
+
+            <div class="h-5 w-px bg-slate-300 dark:bg-slate-700 mx-1"></div>
+
+            <!-- Import Button -->
+            <label class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 transition cursor-pointer flex items-center gap-1.5">
+                <i class="fa-solid fa-file-import text-amber-500"></i> Import
+                <input type="file" id="import-file-input" accept=".json,.csv" class="hidden" onchange="handleFileImport(event)">
+            </label>
+
+            <!-- Quick Export Dropdown -->
+            <div class="relative group">
+                <button class="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-600/30 transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-download"></i> Export <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                </button>
+                <div class="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1 hidden group-hover:block z-50">
+                    <button onclick="downloadCurrentJSON()" class="w-full text-left px-4 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-file-export text-indigo-500"></i> Export Active Sheet (.json)
+                    </button>
+                    <button onclick="downloadAllSheetsJSON()" class="w-full text-left px-4 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-folder-archive text-emerald-500"></i> Export All Sheets Bundle
+                    </button>
+                    <button onclick="exportCSV()" class="w-full text-left px-4 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2 border-t border-slate-100 dark:border-slate-800">
+                        <i class="fa-solid fa-file-csv text-blue-500"></i> Export Active Sheet (.csv)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Toggle Theme Button -->
+            <button onclick="toggleDarkMode()" class="p-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded-lg transition" title="Toggle Light/Dark Theme">
+                <i class="fa-solid fa-moon dark:hidden"></i>
+                <i class="fa-solid fa-sun hidden dark:inline"></i>
+            </button>
+
+            <!-- Toggle Live JSON Sidebar -->
+            <button onclick="toggleJSONPreview()" id="toggle-json-btn" class="p-2 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 rounded-lg transition border border-indigo-200 dark:border-indigo-800/50" title="Toggle Live JSON Panel">
+                <i class="fa-solid fa-code"></i>
+            </button>
+        </div>
+    </header>
+
+    <div class="flex-1 flex overflow-hidden relative">
+
+        <!-- Main Spreadsheet & Schema Editor Area -->
+        <main class="flex-1 flex flex-col overflow-hidden bg-white dark:bg-slate-900">
+            
+            <!-- Schema Definition Toolbar (Column & Data Type Setup) -->
+            <div class="bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 p-3 shrink-0 shadow-inner">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                            <i class="fa-solid fa-sliders text-indigo-500"></i> Schema Columns
+                        </span>
+                        <span id="column-count-badge" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                            0 fields
+                        </span>
+                    </div>
+
+                    <!-- Column Controls -->
+                    <div class="flex items-center gap-2">
+                        <button onclick="addNewColumnPrompt()" class="px-2.5 py-1 text-xs font-medium rounded-md bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50 transition flex items-center gap-1 border border-indigo-200/50 dark:border-indigo-800/50">
+                            <i class="fa-solid fa-plus-circle"></i> Add Field
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Column Definition Badges List -->
+                <div id="schema-columns-list" class="flex flex-wrap items-center gap-2 max-h-28 overflow-y-auto pr-1">
+                    <!-- Dynamic Column Cards rendered here -->
+                </div>
+            </div>
+
+            <!-- Spreadsheet Search & Table Tool Controls -->
+            <div class="px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-3 text-xs">
+                <div class="flex items-center gap-2 flex-1 max-w-md">
+                    <div class="relative w-full">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                        <input type="text" id="search-input" oninput="renderTable()" placeholder="Search active sheet entries..." class="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <span id="row-count-info" class="text-slate-500 dark:text-slate-400 font-medium">0 Entries</span>
+                    <div class="h-4 w-px bg-slate-200 dark:bg-slate-700"></div>
+                    <button onclick="addNewRow()" class="px-3 py-1.5 text-xs font-semibold rounded-md bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-sm flex items-center gap-1.5">
+                        <i class="fa-solid fa-plus"></i> Add Entry Row
+                    </button>
+                    <button onclick="clearAllRows()" class="px-2.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-md transition" title="Clear All Rows">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Interactive Spreadsheet Data Grid -->
+            <div class="flex-1 overflow-auto relative bg-slate-50/50 dark:bg-slate-950/20" id="table-container">
+                <table class="w-full border-collapse text-left text-xs min-w-max">
+                    <thead class="sticky top-0 bg-slate-100 dark:bg-slate-800 z-10 shadow-sm">
+                        <tr id="table-header-row">
+                            <!-- Dynamic Table Headers -->
+                        </tr>
+                    </thead>
+                    <tbody id="table-body" class="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                        <!-- Dynamic Row Entries -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Footer Keyboard Shortcut Bar -->
+            <div class="bg-slate-100 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 px-4 py-1.5 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-4">
+                    <span><kbd class="px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono text-[10px]">Tab</kbd> Move Next Cell</span>
+                    <span><kbd class="px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono text-[10px]">Enter</kbd> Save / New Row</span>
+                </div>
+                <div id="status-message" class="text-indigo-600 dark:text-indigo-400 font-medium">Ready</div>
+            </div>
+        </main>
+
+        <aside id="json-preview-sidebar" class="w-96 border-l border-slate-200 dark:border-slate-800 bg-slate-900 text-slate-100 flex flex-col shrink-0 transition-all duration-300 ease-in-out">
+            <!-- Panel Header -->
+            <div class="p-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-code text-indigo-400"></i>
+                    <span class="text-xs font-bold tracking-wide uppercase">Live JSON Export</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <button onclick="copyFormattedJSON()" class="px-2.5 py-1 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition flex items-center gap-1 shadow">
+                        <i class="fa-regular fa-copy"></i> Copy
+                    </button>
+                    <button onclick="downloadCurrentJSON()" class="px-2 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition" title="Download File">
+                        <i class="fa-solid fa-download"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Formatting Controls Drawer -->
+            <div class="bg-slate-850 p-3 border-b border-slate-800 text-xs space-y-2.5">
+                <div class="flex items-center justify-between">
+                    <label class="text-slate-400 font-medium">Structure Format:</label>
+                    <select id="export-format-type" onchange="updateJSONPreview()" class="bg-slate-800 text-slate-200 border border-slate-700 rounded px-2 py-1 text-xs focus:outline-none focus:border-indigo-500">
+                        <option value="array">Array of Objects ([{}])</option>
+                        <option value="key-value">Key-Value Object ({id: {}})</option>
+                    </select>
+                </div>
+
+                <!-- Primary Key Column Option (Only for Key-Value mode) -->
+                <div id="key-value-options" class="hidden flex items-center justify-between">
+                    <label class="text-slate-400 font-medium">Key Field:</label>
+                    <select id="primary-key-field" onchange="updateJSONPreview()" class="bg-slate-800 text-slate-200 border border-slate-700 rounded px-2 py-1 text-xs focus:outline-none focus:border-indigo-500">
+                        <!-- Dynamic Field Options -->
+                    </select>
+                </div>
+
+                <div class="flex items-center justify-between">
+                    <label class="text-slate-400 font-medium">Indentation:</label>
+                    <select id="json-indent-space" onchange="updateJSONPreview()" class="bg-slate-800 text-slate-200 border border-slate-700 rounded px-2 py-1 text-xs focus:outline-none">
+                        <option value="2">2 Spaces</option>
+                        <option value="4">4 Spaces</option>
+                        <option value="0">Minified (0)</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center gap-4 pt-1">
+                    <label class="flex items-center gap-1.5 cursor-pointer text-slate-300">
+                        <input type="checkbox" id="convert-empty-null" onchange="updateJSONPreview()" class="rounded bg-slate-800 border-slate-700 text-indigo-500 focus:ring-0">
+                        Empty cells to null
+                    </label>
+                    <label class="flex items-center gap-1.5 cursor-pointer text-slate-300">
+                        <input type="checkbox" id="trim-strings" onchange="updateJSONPreview()" class="rounded bg-slate-800 border-slate-700 text-indigo-500 focus:ring-0" checked>
+                        Trim strings
+                    </label>
+                </div>
+            </div>
+
+            <!-- Highlighted Code Output Display Area -->
+            <div class="flex-1 overflow-auto p-4 font-mono text-xs leading-relaxed bg-slate-950 text-slate-200 selection:bg-indigo-500 selection:text-white" id="json-preview-container">
+                <pre id="json-code-display" class="whitespace-pre-wrap break-words"></pre>
+            </div>
+        </aside>
+    </div>
+
+    <div id="column-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-md p-5 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <h3 class="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2" id="column-modal-title">
+                    <i class="fa-solid fa-pen-to-square text-indigo-500"></i> Configure Column Field
+                </h3>
+                <button onclick="closeColumnModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><i class="fa-solid fa-xmark text-base"></i></button>
+            </div>
+
+            <form id="column-form" onsubmit="saveColumnConfig(event)" class="space-y-4">
+                <input type="hidden" id="column-edit-index" value="-1">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Field Key Name</label>
+                    <input type="text" id="modal-col-key" required placeholder="e.g. user_id, price, isActive" class="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    <p class="text-[10px] text-slate-400 mt-1">This key will be used in exported JSON object properties.</p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Target Export Data Type</label>
+                    <select id="modal-col-type" class="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                        <option value="string">String (Text)</option>
+                        <option value="number">Number (Float / Double)</option>
+                        <option value="integer">Integer (Whole Number)</option>
+                        <option value="boolean">Boolean (True / False)</option>
+                        <option value="array">Array (Comma-Separated Values)</option>
+                        <option value="json">JSON Object (Raw JSON snippet)</option>
+                        <option value="date">Date / Datetime (ISO String)</option>
+                        <option value="null">Null (Always exports null)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Default Fallback Value (Optional)</label>
+                    <input type="text" id="modal-col-default" placeholder="e.g. N/A or 0" class="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+
+                <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <button type="button" onclick="closeColumnModal()" class="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">Cancel</button>
+                    <button type="submit" class="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg shadow-sm">Save Column</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        /* ==========================================================================
+           1. Application State & Models
+           ========================================================================== */
+        
+        // Initial Default Workspace Schema Sheets
+        let appState = {
+            activeSheetId: 'sheet_1',
+            sheets: [
+                {
+                    id: 'sheet_1',
+                    title: 'Products',
+                    columns: [
+                        { id: 'c1', name: 'id', type: 'integer', default: '' },
+                        { id: 'c2', name: 'product_name', type: 'string', default: '' },
+                        { id: 'c3', name: 'price', type: 'number', default: '0.00' },
+                        { id: 'c4', name: 'in_stock', type: 'boolean', default: 'true' },
+                        { id: 'c5', name: 'tags', type: 'array', default: '' },
+                        { id: 'c6', name: 'attributes', type: 'json', default: '{}' }
+                    ],
+                    rows: [
+                        { c1: '101', c2: 'Wireless Ergonomic Mouse', c3: '49.99', c4: true, c5: 'electronics, accessory, office', c6: '{"color": "black", "dpi": 4000}' },
+                        { c1: '102', c2: 'Mechanical Gaming Keyboard', c3: '129.50', c4: true, c5: 'gaming, hardware', c6: '{"switches": "Tactile Brown", "rgb": true}' },
+                        { c1: '103', c2: '4K UltraHD Monitor 27"', c3: '349.00', c4: false, c5: 'display, monitor', c6: '{"refresh_rate": "144Hz"}' }
+                    ]
+                },
+                {
+                    id: 'sheet_2',
+                    title: 'Users',
+                    columns: [
+                        { id: 'u1', name: 'user_id', type: 'integer', default: '' },
+                        { id: 'u2', name: 'full_name', type: 'string', default: '' },
+                        { id: 'u3', name: 'email', type: 'string', default: '' },
+                        { id: 'u4', name: 'role', type: 'string', default: 'member' },
+                        { id: 'u5', name: 'verified', type: 'boolean', default: 'false' }
+                    ],
+                    rows: [
+                        { u1: '1', u2: 'Alice Johnson', u3: 'alice@example.com', u4: 'admin', u5: true },
+                        { u1: '2', u2: 'Bob Smith', u3: 'bob@example.com', u4: 'editor', u5: false }
+                    ]
+                }
+            ]
+        };
+
+        const TYPE_ICONS = {
+            string: 'fa-font text-blue-500',
+            number: 'fa-hashtag text-amber-500',
+            integer: 'fa-cubes text-emerald-500',
+            boolean: 'fa-toggle-on text-purple-500',
+            array: 'fa-list text-indigo-500',
+            json: 'fa-brackets-curly text-rose-500',
+            date: 'fa-calendar-days text-teal-500',
+            null: 'fa-ban text-slate-400'
+        };
+
+        // Utility to get current active sheet object
+        function getActiveSheet() {
+            return appState.sheets.find(s => s.id === appState.activeSheetId) || appState.sheets[0];
+        }
+
+        function renderSheetTabs() {
+            const container = document.getElementById('sheet-tabs-container');
+            container.innerHTML = '';
+
+            appState.sheets.forEach(sheet => {
+                const isActive = sheet.id === appState.activeSheetId;
+                const tab = document.createElement('div');
+                tab.className = `flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer transition select-none ${
+                    isActive 
+                        ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' 
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+                }`;
+
+                tab.innerHTML = `
+                    <span onclick="switchSheet('${sheet.id}')">${sheet.title}</span>
+                    <button onclick="renameSheetPrompt('${sheet.id}', event)" class="opacity-40 hover:opacity-100 text-[10px] ml-1" title="Rename Sheet">
+                        <i class="fa-solid fa-pencil"></i>
+                    </button>
+                    ${appState.sheets.length > 1 ? `
+                        <button onclick="deleteSheet('${sheet.id}', event)" class="opacity-40 hover:opacity-100 hover:text-rose-500 text-[10px]" title="Delete Sheet">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    ` : ''}
+                `;
+                container.appendChild(tab);
+            });
+        }
+
+        function switchSheet(sheetId) {
+            appState.activeSheetId = sheetId;
+            renderSheetTabs();
+            renderSchemaColumns();
+            renderTable();
+            updateJSONPreview();
+        }
+
+        function addNewSheet() {
+            const sheetNum = appState.sheets.length + 1;
+            const newId = 'sheet_' + Date.now();
+            const newSheet = {
+                id: newId,
+                title: `Sheet ${sheetNum}`,
+                columns: [
+                    { id: 'col_' + Date.now() + '_1', name: 'id', type: 'integer', default: '' },
+                    { id: 'col_' + Date.now() + '_2', name: 'title', type: 'string', default: '' }
+                ],
+                rows: [
+                    { [`col_${Date.now()}_1`]: '1', [`col_${Date.now()}_2`]: 'Sample Entry' }
+                ]
+            };
+            appState.sheets.push(newSheet);
+            switchSheet(newId);
+            showToast('New sheet created successfully!', 'success');
+        }
+
+        function renameSheetPrompt(sheetId, event) {
+            event.stopPropagation();
+            const sheet = appState.sheets.find(s => s.id === sheetId);
+            const newName = prompt('Enter new title for spreadsheet:', sheet.title);
+            if (newName && newName.trim() !== '') {
+                sheet.title = newName.trim();
+                renderSheetTabs();
+            }
+        }
+
+        function deleteSheet(sheetId, event) {
+            event.stopPropagation();
+            if (appState.sheets.length <= 1) return;
+            if (confirm('Are you sure you want to delete this spreadsheet?')) {
+                appState.sheets = appState.sheets.filter(s => s.id !== sheetId);
+                if (appState.activeSheetId === sheetId) {
+                    appState.activeSheetId = appState.sheets[0].id;
+                }
+                renderSheetTabs();
+                renderSchemaColumns();
+                renderTable();
+                updateJSONPreview();
+                showToast('Sheet deleted', 'info');
+            }
+        }
+
+        function renderSchemaColumns() {
+            const sheet = getActiveSheet();
+            const container = document.getElementById('schema-columns-list');
+            const countBadge = document.getElementById('column-count-badge');
+            
+            countBadge.textContent = `${sheet.columns.length} fields`;
+            container.innerHTML = '';
+
+            sheet.columns.forEach((col, index) => {
+                const iconClass = TYPE_ICONS[col.type] || 'fa-tag';
+                const badge = document.createElement('div');
+                badge.className = 'group flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 text-xs shadow-sm hover:border-indigo-400 transition';
+                
+                badge.innerHTML = `
+                    <i class="fa-solid ${iconClass}"></i>
+                    <span class="font-bold text-slate-700 dark:text-slate-200">${col.name}</span>
+                    <span class="text-[10px] text-slate-400 dark:text-slate-500 font-mono bg-slate-100 dark:bg-slate-900 px-1.5 py-0.5 rounded">${col.type}</span>
+                    <div class="flex items-center gap-1 ml-1 border-l border-slate-200 dark:border-slate-700 pl-1.5">
+                        <button onclick="editColumnModal(${index})" class="text-slate-400 hover:text-indigo-500" title="Edit Schema Field">
+                            <i class="fa-solid fa-gear text-[11px]"></i>
+                        </button>
+                        <button onclick="moveColumn(${index}, -1)" ${index === 0 ? 'disabled class="opacity-20"' : 'class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"'} title="Move Left">
+                            <i class="fa-solid fa-chevron-left text-[10px]"></i>
+                        </button>
+                        <button onclick="moveColumn(${index}, 1)" ${index === sheet.columns.length - 1 ? 'disabled class="opacity-20"' : 'class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"'} title="Move Right">
+                            <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                        </button>
+                        <button onclick="removeColumn('${col.id}')" class="text-slate-400 hover:text-rose-500" title="Delete Field">
+                            <i class="fa-solid fa-trash text-[10px]"></i>
+                        </button>
+                    </div>
+                `;
+                container.appendChild(badge);
+            });
+
+            // Update primary key dropdown options in JSON side drawer
+            updatePrimaryKeyDropdown();
+        }
+
+        function addNewColumnPrompt() {
+            document.getElementById('column-modal-title').innerHTML = `<i class="fa-solid fa-plus-circle text-indigo-500"></i> Add New Column Field`;
+            document.getElementById('column-edit-index').value = '-1';
+            document.getElementById('modal-col-key').value = '';
+            document.getElementById('modal-col-type').value = 'string';
+            document.getElementById('modal-col-default').value = '';
+            document.getElementById('column-modal').classList.remove('hidden');
+        }
+
+        function editColumnModal(index) {
+            const sheet = getActiveSheet();
+            const col = sheet.columns[index];
+            document.getElementById('column-modal-title').innerHTML = `<i class="fa-solid fa-pen-to-square text-indigo-500"></i> Edit Column: ${col.name}`;
+            document.getElementById('column-edit-index').value = index;
+            document.getElementById('modal-col-key').value = col.name;
+            document.getElementById('modal-col-type').value = col.type;
+            document.getElementById('modal-col-default').value = col.default || '';
+            document.getElementById('column-modal').classList.remove('hidden');
+        }
+
+        function closeColumnModal() {
+            document.getElementById('column-modal').classList.add('hidden');
+        }
+
+        function saveColumnConfig(e) {
+            e.preventDefault();
+            const sheet = getActiveSheet();
+            const editIdx = parseInt(document.getElementById('column-edit-index').value);
+            const keyName = document.getElementById('modal-col-key').value.trim().replace(/\s+/g, '_');
+            const colType = document.getElementById('modal-col-type').value;
+            const defValue = document.getElementById('modal-col-default').value;
+
+            if (!keyName) return;
+
+            if (editIdx >= 0) {
+                // Update existing
+                sheet.columns[editIdx].name = keyName;
+                sheet.columns[editIdx].type = colType;
+                sheet.columns[editIdx].default = defValue;
+            } else {
+                // Add new column
+                const colId = 'col_' + Date.now();
+                sheet.columns.push({ id: colId, name: keyName, type: colType, default: defValue });
+                // Populate default for existing rows
+                sheet.rows.forEach(r => {
+                    r[colId] = colType === 'boolean' ? false : defValue;
+                });
+            }
+
+            closeColumnModal();
+            renderSchemaColumns();
+            renderTable();
+            updateJSONPreview();
+            showToast('Column schema saved!', 'success');
+        }
+
+        function removeColumn(colId) {
+            const sheet = getActiveSheet();
+            if (sheet.columns.length <= 1) {
+                showToast('At least one column is required in the sheet.', 'warning');
+                return;
+            }
+            if (confirm('Delete this column and all its values in rows?')) {
+                sheet.columns = sheet.columns.filter(c => c.id !== colId);
+                sheet.rows.forEach(r => delete r[colId]);
+                renderSchemaColumns();
+                renderTable();
+                updateJSONPreview();
+                showToast('Column removed', 'info');
+            }
+        }
+
+        function moveColumn(index, direction) {
+            const sheet = getActiveSheet();
+            const newIdx = index + direction;
+            if (newIdx < 0 || newIdx >= sheet.columns.length) return;
+            const temp = sheet.columns[index];
+            sheet.columns[index] = sheet.columns[newIdx];
+            sheet.columns[newIdx] = temp;
+            renderSchemaColumns();
+            renderTable();
+            updateJSONPreview();
+        }
+
+        function renderTable() {
+            const sheet = getActiveSheet();
+            const searchQuery = document.getElementById('search-input').value.toLowerCase();
+            const headerRow = document.getElementById('table-header-row');
+            const tableBody = document.getElementById('table-body');
+            const rowInfo = document.getElementById('row-count-info');
+
+            // Render Table Column Headers
+            headerRow.innerHTML = `
+                <th class="p-2 w-10 text-center font-semibold text-slate-400 dark:text-slate-500 border-b border-r border-slate-200 dark:border-slate-800">#</th>
+            `;
+
+            sheet.columns.forEach(col => {
+                const iconClass = TYPE_ICONS[col.type] || 'fa-tag';
+                const th = document.createElement('th');
+                th.className = 'p-2.5 font-semibold text-slate-700 dark:text-slate-200 border-b border-r border-slate-200 dark:border-slate-800 min-w-[140px]';
+                th.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center gap-1.5">
+                            <i class="fa-solid ${iconClass} text-[11px]"></i>
+                            ${col.name}
+                        </span>
+                        <span class="text-[9px] font-mono text-slate-400 font-normal uppercase">${col.type}</span>
+                    </div>
+                `;
+                headerRow.appendChild(th);
+            });
+
+            headerRow.innerHTML += `<th class="p-2 w-16 text-center font-semibold text-slate-400 dark:text-slate-500 border-b border-slate-200 dark:border-slate-800">Actions</th>`;
+
+            // Filter Rows
+            const filteredRows = sheet.rows.filter(row => {
+                if (!searchQuery) return true;
+                return Object.values(row).some(val => String(val).toLowerCase().includes(searchQuery));
+            });
+
+            rowInfo.textContent = `${filteredRows.length} of ${sheet.rows.length} Entries`;
+            tableBody.innerHTML = '';
+
+            if (filteredRows.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="${sheet.columns.length + 2}" class="p-8 text-center text-slate-400 dark:text-slate-500">
+                            <i class="fa-solid fa-folder-open text-2xl mb-2 block opacity-50"></i>
+                            No entry rows found. Click "Add Entry Row" to insert data.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            // Render Rows
+            filteredRows.forEach((row, rowIndex) => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-indigo-50/40 dark:hover:bg-slate-800/40 transition group';
+
+                // Index Cell
+                tr.innerHTML = `
+                    <td class="p-2 text-center text-slate-400 dark:text-slate-500 border-r border-slate-200 dark:border-slate-800 font-mono text-[11px] select-none bg-slate-50/50 dark:bg-slate-900/50">
+                        ${rowIndex + 1}
+                    </td>
+                `;
+
+                // Columns Cells
+                sheet.columns.forEach(col => {
+                    const cellValue = row[col.id] !== undefined ? row[col.id] : (col.default || '');
+                    const td = document.createElement('td');
+                    td.className = 'p-1 border-r border-slate-200 dark:border-slate-800 relative';
+
+                    td.appendChild(createTypeAwareInput(col, cellValue, (val) => {
+                        row[col.id] = val;
+                        updateJSONPreview();
+                    }));
+
+                    tr.appendChild(td);
+                });
+
+                // Row Action Buttons
+                const actionsTd = document.createElement('td');
+                actionsTd.className = 'p-1 text-center border-slate-200 dark:border-slate-800';
+                actionsTd.innerHTML = `
+                    <div class="flex items-center justify-center gap-1 opacity-60 group-hover:opacity-100 transition">
+                        <button onclick="duplicateRow(${rowIndex})" class="p-1 text-slate-400 hover:text-indigo-500" title="Duplicate Row">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                        <button onclick="deleteRow(${rowIndex})" class="p-1 text-slate-400 hover:text-rose-500" title="Delete Row">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                `;
+                tr.appendChild(actionsTd);
+
+                tableBody.appendChild(tr);
+            });
+        }
+
+        function createTypeAwareInput(column, value, onChange) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'w-full h-full flex items-center';
+
+            if (column.type === 'boolean') {
+                const isChecked = value === true || value === 'true' || value === '1';
+                wrapper.innerHTML = `
+                    <label class="relative inline-flex items-center cursor-pointer mx-auto">
+                        <input type="checkbox" ${isChecked ? 'checked' : ''} class="sr-only peer">
+                        <div class="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:after:border-slate-600 peer-checked:bg-indigo-600"></div>
+                    </label>
+                `;
+                const checkbox = wrapper.querySelector('input');
+                checkbox.addEventListener('change', (e) => onChange(e.target.checked));
+            } else if (column.type === 'null') {
+                wrapper.innerHTML = `<span class="italic text-slate-400 text-[11px] px-2">null</span>`;
+            } else {
+                const input = document.createElement('input');
+                input.value = value !== null && value !== undefined ? value : '';
+                input.className = 'w-full bg-transparent px-2 py-1 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:bg-indigo-50/50 dark:focus:bg-indigo-950/30 rounded transition';
+
+                if (column.type === 'number' || column.type === 'integer') {
+                    input.type = 'number';
+                    if (column.type === 'integer') input.step = '1';
+                    else input.step = 'any';
+                } else if (column.type === 'date') {
+                    input.type = 'datetime-local';
+                } else {
+                    input.type = 'text';
+                }
+
+                input.addEventListener('input', (e) => onChange(e.target.value));
+                wrapper.appendChild(input);
+            }
+
+            return wrapper;
+        }
+
+        function addNewRow() {
+            const sheet = getActiveSheet();
+            const newRow = {};
+            sheet.columns.forEach(col => {
+                newRow[col.id] = col.type === 'boolean' ? false : (col.default || '');
+            });
+            sheet.rows.push(newRow);
+            renderTable();
+            updateJSONPreview();
+            setStatus('New entry added');
+        }
+
+        function duplicateRow(index) {
+            const sheet = getActiveSheet();
+            const rowCopy = JSON.parse(JSON.stringify(sheet.rows[index]));
+            sheet.rows.splice(index + 1, 0, rowCopy);
+            renderTable();
+            updateJSONPreview();
+            showToast('Row duplicated', 'info');
+        }
+
+        function deleteRow(index) {
+            const sheet = getActiveSheet();
+            sheet.rows.splice(index, 1);
+            renderTable();
+            updateJSONPreview();
+            setStatus('Row deleted');
+        }
+
+        function clearAllRows() {
+            const sheet = getActiveSheet();
+            if (sheet.rows.length === 0) return;
+            if (confirm('Are you sure you want to delete all entries in this sheet?')) {
+                sheet.rows = [];
+                renderTable();
+                updateJSONPreview();
+                showToast('All rows cleared', 'info');
+            }
+        }
+
+        function convertSheetToJSON(sheet) {
+            const formatType = document.getElementById('export-format-type').value;
+            const primaryKeyColId = document.getElementById('primary-key-field').value;
+            const convertNull = document.getElementById('convert-empty-null').checked;
+            const trimStrings = document.getElementById('trim-strings').checked;
+
+            const processedRows = sheet.rows.map(row => {
+                const obj = {};
+                sheet.columns.forEach(col => {
+                    let val = row[col.id];
+
+                    // Process Data Types
+                    if (col.type === 'null') {
+                        val = null;
+                    } else if (val === '' || val === undefined || val === null) {
+                        val = convertNull ? null : (col.default !== '' ? col.default : '');
+                    } else if (col.type === 'number') {
+                        const parsed = parseFloat(val);
+                        val = isNaN(parsed) ? (convertNull ? null : 0) : parsed;
+                    } else if (col.type === 'integer') {
+                        const parsed = parseInt(val, 10);
+                        val = isNaN(parsed) ? (convertNull ? null : 0) : parsed;
+                    } else if (col.type === 'boolean') {
+                        val = val === true || val === 'true' || val === '1';
+                    } else if (col.type === 'array') {
+                        if (typeof val === 'string') {
+                            val = val.split(',').map(s => trimStrings ? s.trim() : s).filter(s => s.length > 0);
+                        }
+                    } else if (col.type === 'json') {
+                        try {
+                            val = typeof val === 'object' ? val : JSON.parse(val);
+                        } catch (e) {
+                            // Leave as string or null if invalid JSON
+                        }
+                    } else if (col.type === 'string' && trimStrings && typeof val === 'string') {
+                        val = val.trim();
+                    }
+
+                    obj[col.name] = val;
+                });
+                return obj;
+            });
+
+            // Format Structure Output
+            if (formatType === 'key-value') {
+                const keyCol = sheet.columns.find(c => c.id === primaryKeyColId) || sheet.columns[0];
+                const keyColName = keyCol ? keyCol.name : 'id';
+                const kvObj = {};
+                
+                processedRows.forEach((row, idx) => {
+                    const keyValue = row[keyColName] !== undefined && row[keyColName] !== null ? String(row[keyColName]) : `item_${idx + 1}`;
+                    kvObj[keyValue] = row;
+                });
+                return kvObj;
+            }
+
+            return processedRows;
+        }
+
+        function updatePrimaryKeyDropdown() {
+            const sheet = getActiveSheet();
+            const select = document.getElementById('primary-key-field');
+            select.innerHTML = '';
+            sheet.columns.forEach(col => {
+                const opt = document.createElement('option');
+                opt.value = col.id;
+                opt.textContent = `${col.name} (${col.type})`;
+                select.appendChild(opt);
+            });
+        }
+
+        function updateJSONPreview() {
+            const sheet = getActiveSheet();
+            const formatType = document.getElementById('export-format-type').value;
+            const kvOptions = document.getElementById('key-value-options');
+
+            if (formatType === 'key-value') {
+                kvOptions.classList.remove('hidden');
+            } else {
+                kvOptions.classList.add('hidden');
+            }
+
+            const jsonData = convertSheetToJSON(sheet);
+            const indentSpaces = parseInt(document.getElementById('json-indent-space').value);
+            const jsonString = JSON.stringify(jsonData, null, indentSpaces);
+
+            const display = document.getElementById('json-code-display');
+            display.innerHTML = syntaxHighlightJSON(jsonString);
+        }
+
+        function syntaxHighlightJSON(jsonStr) {
+            if (!jsonStr) return '';
+            jsonStr = jsonStr.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return jsonStr.replace(/("(\\u[a-zA-A0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                let cls = 'json-number';
+                if (/^"/.test(match)) {
+                    if (/:$/.test(match)) {
+                        cls = 'json-key';
+                    } else {
+                        cls = 'json-string';
+                    }
+                } else if (/true|false/.test(match)) {
+                    cls = 'json-boolean';
+                } else if (/null/.test(match)) {
+                    cls = 'json-null';
+                }
+                return `<span class="${cls}">${match}</span>`;
+            });
+        }
+
+        function downloadCurrentJSON() {
+            const sheet = getActiveSheet();
+            const data = convertSheetToJSON(sheet);
+            const indent = parseInt(document.getElementById('json-indent-space').value);
+            const blob = new Blob([JSON.stringify(data, null, indent)], { type: 'application/json' });
+            saveFileBlob(blob, `${sheet.title.toLowerCase().replace(/\s+/g, '_')}.json`);
+            showToast('JSON exported successfully!', 'success');
+        }
+
+        function downloadAllSheetsJSON() {
+            const bundle = {};
+            appState.sheets.forEach(sheet => {
+                bundle[sheet.title] = convertSheetToJSON(sheet);
+            });
+            const indent = parseInt(document.getElementById('json-indent-space').value);
+            const blob = new Blob([JSON.stringify(bundle, null, indent)], { type: 'application/json' });
+            saveFileBlob(blob, `sheets_export_bundle.json`);
+            showToast('All sheets exported into bundle JSON!', 'success');
+        }
+
+        function exportCSV() {
+            const sheet = getActiveSheet();
+            let csv = sheet.columns.map(c => `"${c.name}"`).join(',') + '\n';
+
+            sheet.rows.forEach(row => {
+                const rowValues = sheet.columns.map(col => {
+                    let val = row[col.id] !== undefined ? row[col.id] : '';
+                    if (typeof val === 'object') val = JSON.stringify(val);
+                    return `"${String(val).replace(/"/g, '""')}"`;
+                });
+                csv += rowValues.join(',') + '\n';
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            saveFileBlob(blob, `${sheet.title.toLowerCase().replace(/\s+/g, '_')}.csv`);
+            showToast('CSV file exported!', 'success');
+        }
+
+        function saveFileBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function copyFormattedJSON() {
+            const sheet = getActiveSheet();
+            const data = convertSheetToJSON(sheet);
+            const indent = parseInt(document.getElementById('json-indent-space').value);
+            const str = JSON.stringify(data, null, indent);
+            
+            // Clipboard fallback for iFrame compatibility
+            const textarea = document.createElement('textarea');
+            textarea.value = str;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+
+            showToast('JSON copied to clipboard!', 'success');
+        }
+
+        function handleFileImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const content = e.target.result;
+                    if (file.name.endsWith('.csv')) {
+                        parseCSVImport(content, file.name);
+                    } else {
+                        parseJSONImport(content, file.name);
+                    }
+                } catch (err) {
+                    showToast('Failed to parse import file: ' + err.message, 'error');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = ''; // Reset input
+        }
+
+        function parseJSONImport(content, filename) {
+            const parsed = JSON.parse(content);
+            const sheetTitle = filename.replace(/\.[^/.]+$/, "");
+            const newSheetId = 'sheet_' + Date.now();
+
+            let itemsArray = [];
+            if (Array.isArray(parsed)) {
+                itemsArray = parsed;
+            } else if (typeof parsed === 'object') {
+                itemsArray = Object.keys(parsed).map(k => {
+                    return typeof parsed[k] === 'object' ? { id_key: k, ...parsed[k] } : { id_key: k, value: parsed[k] };
+                });
+            }
+
+            if (itemsArray.length === 0) {
+                showToast('Imported JSON is empty', 'warning');
+                return;
+            }
+
+            // Deduce Schema Columns from keys
+            const keySet = new Set();
+            itemsArray.forEach(item => {
+                if (typeof item === 'object' && item !== null) {
+                    Object.keys(item).forEach(k => keySet.add(k));
+                }
+            });
+
+            const columns = Array.from(keySet).map((key, i) => {
+                const sampleVal = itemsArray.find(item => item[key] !== undefined)?.[key];
+                let type = 'string';
+                if (typeof sampleVal === 'number') type = Number.isInteger(sampleVal) ? 'integer' : 'number';
+                else if (typeof sampleVal === 'boolean') type = 'boolean';
+                else if (Array.isArray(sampleVal)) type = 'array';
+                else if (typeof sampleVal === 'object' && sampleVal !== null) type = 'json';
+
+                return { id: `c_imp_${i}_${Date.now()}`, name: key, type: type, default: '' };
+            });
+
+            const rows = itemsArray.map(item => {
+                const rowObj = {};
+                columns.forEach(col => {
+                    let val = item[col.name];
+                    if (col.type === 'array' && Array.isArray(val)) val = val.join(', ');
+                    else if (col.type === 'json' && typeof val === 'object') val = JSON.stringify(val);
+                    rowObj[col.id] = val !== undefined ? val : '';
+                });
+                return rowObj;
+            });
+
+            appState.sheets.push({ id: newSheetId, title: sheetTitle, columns: columns, rows: rows });
+            switchSheet(newSheetId);
+            showToast(`Imported ${rows.length} rows into "${sheetTitle}"`, 'success');
+        }
+
+        function parseCSVImport(content, filename) {
+            const lines = content.split(/\r\n|\n/).filter(line => line.trim().length > 0);
+            if (lines.length < 1) return;
+
+            const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
+            const sheetTitle = filename.replace(/\.[^/.]+$/, "");
+            const newSheetId = 'sheet_' + Date.now();
+
+            const columns = headers.map((h, i) => ({
+                id: `col_csv_${i}_${Date.now()}`,
+                name: h || `Column_${i+1}`,
+                type: 'string',
+                default: ''
+            }));
+
+            const rows = [];
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(',').map(v => v.replace(/^"|"$/g, '').trim());
+                const rowObj = {};
+                columns.forEach((col, cIdx) => {
+                    rowObj[col.id] = values[cIdx] !== undefined ? values[cIdx] : '';
+                });
+                rows.push(rowObj);
+            }
+
+            appState.sheets.push({ id: newSheetId, title: sheetTitle, columns: columns, rows: rows });
+            switchSheet(newSheetId);
+            showToast(`Imported CSV with ${rows.length} entries!`, 'success');
+        }
+
+        function toggleDarkMode() {
+            document.documentElement.classList.toggle('dark');
+        }
+
+        function toggleJSONPreview() {
+            const sidebar = document.getElementById('json-preview-sidebar');
+            sidebar.classList.toggle('hidden');
+        }
+
+        function setStatus(msg) {
+            document.getElementById('status-message').textContent = msg;
+            setTimeout(() => {
+                document.getElementById('status-message').textContent = 'Ready';
+            }, 3000);
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const typeColors = {
+                success: 'bg-emerald-600 text-white',
+                warning: 'bg-amber-500 text-white',
+                error: 'bg-rose-600 text-white',
+                info: 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900'
+            };
+
+            toast.className = `px-4 py-2.5 rounded-xl shadow-xl text-xs font-semibold flex items-center gap-2 pointer-events-auto transition-all duration-300 transform translate-y-2 opacity-0 ${typeColors[type] || typeColors.info}`;
+            toast.innerHTML = `<i class="fa-solid fa-circle-info"></i> ${message}`;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        window.addEventListener('keydown', (e) => {
+            // Enter key on inputs to add a new row
+            if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !e.target.closest('#column-modal')) {
+                addNewRow();
+            }
+        });
+
+        // App Initialization
+        window.onload = function() {
+            renderSheetTabs();
+            renderSchemaColumns();
+            renderTable();
+            updateJSONPreview();
+            // Default dark mode start
+            document.documentElement.classList.add('dark');
+        };
+    </script>
+</body>
+</html>
